@@ -1,0 +1,40 @@
+library(igraph)
+library(ggraph)
+library(dplyr)
+
+var.selected <- c("Forest", "Agriculture", "Builtup", "Water")
+
+# Select LULC columns
+selected_data <- dplyr::select(data, dplyr::all_of(var.selected))
+
+# Compute correlation
+cor.tab <- cor(selected_data[sapply(selected_data, is.numeric)], use = "pairwise.complete.obs")
+
+# Convert correlation matrix to table and filter
+filtered_cor <- as.data.frame(as.table(cor.tab)) %>%
+  dplyr::rename(Var1 = Var1, Var2 = Var2, Correlation = Freq) %>%
+  dplyr::filter(abs(Correlation) >= 0.7, Var1 != Var2) %>%
+  dplyr::arrange(desc(Correlation))
+
+# Create edges
+cor_edges <- dplyr::select(filtered_cor, Var1, Var2, Correlation)
+
+# Graph object
+cor_graph <- graph_from_data_frame(cor_edges, directed = FALSE)
+
+# Add labels as node attribute
+V(cor_graph)$label <- custom_labels[V(cor_graph)$name]
+
+# Plot
+ggraph(cor_graph, layout = "kk") +
+  geom_edge_link(aes(edge_alpha = abs(Correlation), edge_width = abs(Correlation), edge_color = Correlation)) +
+  scale_edge_color_gradient2(low = "salmon3", mid = "white", high = "gold3", midpoint = 0, name = "Correlation") +
+  scale_edge_width_continuous(name = "Correlation") +
+  scale_edge_alpha_continuous(name = "Correlation") +
+  geom_node_point(size = 2, color = "black") +
+  geom_node_text(aes(label = label), repel = TRUE, size = 3) +
+  theme_void() +
+  theme(legend.position = "right", 
+        legend.box = "vertical", 
+        plot.margin = ggplot2::margin(10, 10, 10, 10),
+        plot.title = element_text(hjust = 0.5, vjust = 4, size = 13, face = "bold"))
