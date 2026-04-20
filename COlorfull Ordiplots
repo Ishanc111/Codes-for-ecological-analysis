@@ -1,0 +1,69 @@
+## PCA with Ordiplot
+```{r}
+# Convert data to data frame and set row names
+data.PCA <- as.data.frame(data.PCA)
+rownames(data.PCA) <- data$Mycode
+
+# Perform PCA
+pca.test <- rda(scale(data.PCA))
+
+# Extract plot data
+plot1 <- ordiplot(pca.test, choices = c(1, 2))
+sites.long1 <- sites.long(plot1, env.data = data.PCA)
+species.long1 <- species.long(plot1)
+axis.long2 <- axis.long(pca.test, choices = c(1, 2))
+
+# Generate ordisurf data
+A1.surface <- ordisurf(plot1, y = data$Total_Hrvst, nlevels = 9)
+A1.grid <- ordisurfgrid.long(A1.surface)
+
+# Filter finite values for contour
+finite_z <- A1.grid %>% filter(is.finite(z))
+max_z <- max(finite_z$z)
+contour_breaks <- seq(0, max_z + 50, by = 50)  # Adjust intervals as needed
+A1.grid <- A1.grid %>% filter(is.finite(z))
+
+# Ensure Monsoon is a factor
+#data.sup$Monsoon <- as.factor(data.sup$Monsoon)
+data.sup$Monsoon <- factor(data.sup$Monsoon, levels = c("Northeast", "1st_Inter_Monsoon", "Southwest","2nd_Inter_Monsoon"))
+
+####### PCA plot with Production surface  -----------
+ggplot() +
+  geom_contour_filled(data = A1.grid, aes(x = x,y = y,z = z),
+                      breaks = seq(0, max_z + 50, by = 50)) +
+  scale_fill_brewer(palette = "Blues") +
+  stat_ellipse(data = sites.long1, 
+               aes(x = as.numeric(axis1), y = as.numeric(axis2), 
+                   color = as.factor(data.sup$Monsoon)), 
+               type = "t", level = 0.95, linewidth = 1) +
+  # geom_text_repel(data = species.long1, 
+  #                 aes(x = 1.1*as.numeric(axis1), y = 1.1*as.numeric(axis2), 
+  #                     label = labels), 
+  #                 size = 3.5, color = "red3", fontface = "bold", 
+  #                 box.padding = 0.3, point.padding = 0.3) +
+  geom_vline(xintercept = 0, color = "grey70", linetype = 2) +
+  geom_hline(yintercept = 0, color = "grey70", linetype = 2) +
+  scale_x_continuous(sec.axis = dup_axis(labels = NULL, name = NULL)) +
+  scale_y_continuous(sec.axis = dup_axis(labels = NULL, name = NULL)) +
+  xlab(axis.long2[1, "label"]) +
+  ylab(axis.long2[2, "label"]) +  
+  labs(fill = "Total Production (kg/ha)") +
+  scale_color_manual(values = c("#2c51c9", "#C78CFF","#fa9750","#6b8f10")) +
+  labs(color = "Monsoon Period", fill = "Total Production (kg/ha)") +
+  theme(
+    axis.ticks.x = element_blank(),
+    axis.ticks.y = element_blank(),
+    panel.background = element_blank(),
+    panel.border = element_blank(),
+    panel.grid = element_blank(),
+    axis.line = element_line(color = "gray25"),
+    text = element_text(size = 12),
+    axis.text = element_text(size = 10, colour = "gray25"),
+    axis.title = element_text(size = 14, colour = "gray25"),
+    legend.title = element_text(size = 12),
+    legend.key = element_blank(),
+    legend.position = "right",
+    legend.text = element_text(size = 12, color = "black")
+  )
+
+```
