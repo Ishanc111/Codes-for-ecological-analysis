@@ -1,0 +1,53 @@
+```{r}
+library(ggdendro)
+library(dendextend)
+
+# Compute correlation matrix and convert to distance matrix
+cor_matrix <- cor(data[, env.var], use = "complete.obs")
+dist_matrix <- as.dist(1 - cor_matrix)  # Use 1 - correlation directly for distance
+
+# Perform hierarchical clustering
+hclust_result <- hclust(dist_matrix, method = "ward.D2")
+
+# Convert the result to a dendrogram object
+dend <- as.dendrogram(hclust_result)
+
+# Replace labels with custom labels
+labels(dend) <- custom_labels[labels(dend)]
+
+# Highlight branches based on correlation threshold
+cor_threshold <- 0.6
+cor_pairs <- which(abs(cor_matrix) > cor_threshold, arr.ind = TRUE)
+
+highlight_branches <- function(dend, cor_pairs) {
+  for (i in 1:nrow(cor_pairs)) {
+    idx1 <- cor_pairs[i, 1]
+    idx2 <- cor_pairs[i, 2]
+    dend <- dendextend::set(dend, "branches_col", value = "red", k = 7)
+  }
+  return(dend)
+}
+
+# Apply highlighting
+dend <- highlight_branches(dend, cor_pairs)
+
+# Customize and plot the dendrogram
+dend <- dend %>%
+  color_branches(k = 7) %>%  # Color branches for 7 clusters
+  set("labels_cex", 0.8)     # Adjust label size
+
+par(mar = c(8, 3, 4, 4))  # Adjust margins for better label visibility
+
+# Adjust y-axis to display correlation
+plot(dend, 
+     main = "    Hierarchical Clustering of Variables", 
+     ylab = "1 - Correlation", 
+     ylim = c(0, 0.5))
+abline(h = 0.4, col = "gray", lty = 2, lwd = 2)
+
+# Add a secondary y-axis with correlation values
+axis(side = 4, at = seq(0, 1, by = 0.2), 
+     labels = round(1 - seq(0, 1, by = 0.2), 2))
+mtext("Correlation", side = 4, line = 3)
+
+```
