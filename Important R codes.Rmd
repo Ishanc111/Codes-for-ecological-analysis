@@ -1,0 +1,903 @@
+---
+title: "My code repository"
+author: "Ishan"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Basic codes
+
+## Group|mean|relocate
+```{r}
+data_mean <- data %>% 
+  group_by(Cycle,Mycode,Code,District,FullDate,Name) %>% 
+  summarise(across(where(is.numeric), \(x) mean(x, na.rm = T))) %>% 
+  relocate(Cycle,Mycode,Code,District,FullDate,Name, .after = last_col())
+
+
+setdiff(colnames(data_mean),colnames(data.PCA))
+```
+## mutate
+```{r}
+data.sup <- data.sup %>% mutate(Eel = Eel/(Surf.area*100))
+```
+
+## Subset
+```{r}
+subset(data, Phase == "During")
+```
+
+
+## Custom labels
+```{r}
+#auto arrangement
+cat(paste0(colnames(data), ' = " "', collapse = " , "))
+
+custom_labels <- c(
+  Temperature = "Temp",
+  DO = "DO",
+  EC = "EC",
+  TDS = "TDS",
+  Water_pH = "Water-pH",
+  Water_ORP = "Water-ORP")
+```
+
+## Arrange colnames
+```{r}
+#for selection
+cat(paste0("(" ,colnames(data), ")", collapse = " , "))
+
+#for selection
+cat(paste0('"' ,colnames(data), '"', collapse = " , "))
+
+#for GAM
+cat(paste0("s(" ,summary_table1$Variable, ")", collapse = " + "))
+```
+
+# Distribution check | Histograms
+
+```{r}
+names1 <- colnames(data)
+
+for (nam in names1) {
+  if (is.numeric(data[[nam]])) {
+    hist(data[[nam]], main = nam, breaks = 30)
+  }
+}
+```
+
+# Normality check
+```{r}
+# Shapiro-Wilk Normality Test for all numeric columns with conclusion
+normality_summary <- data.frame(
+  Column = character(),
+  P_Value = numeric(),
+  Conclusion = character(),
+  stringsAsFactors = FALSE
+)
+
+for (col_name in names(data.trf)) {
+  column_data <- data[[col_name]]
+  
+  if (is.numeric(column_data) && length(column_data) >= 3 && length(column_data) <= 5000) {
+    test_result <- shapiro.test(column_data)
+    p_val <- test_result$p.value
+    conclusion <- ifelse(p_val > 0.05, "Normal", "Not Normal")
+    
+    normality_summary <- rbind(normality_summary, 
+                               data.frame(Column = col_name, 
+                                          P_Value = round(p_val, 5), 
+                                          Conclusion = conclusion))
+  }
+}
+
+# View summary table
+print(normality_summary)
+
+
+```
+
+
+# Correlation
+
+## Test
+```{r}
+t1 <- cor.test(data$Builtup.area, data$Agri.area)
+t1$p.value     # p-value 
+t1$estimate    # r
+t1$estimate^2  # R2
+t1
+```
+
+
+## Correlation matrix Plot | Circles
+```{r  fig.width= 8, fig.height=7, dpi= 300}
+library(corrplot)
+
+# First correlation plot for Percentage LULC
+cols_of_interest <- c("Forest", "Agriculture", "Builtup", "Water")
+data_subset <- data[cols_of_interest]
+cor_matrix <- cor(data_subset, use = "complete.obs") 
+
+# Plotting the correlation matrix for Percentage LULC
+corrplot::corrplot(
+  cor_matrix, 
+  method = "circle",
+  type = "lower",
+  tl.col = "black",
+  tl.srt = 45,
+  tl.cex = 1,
+  addCoef.col = "black",
+  number.cex = 0.9,
+  title = "Percentage LULC", 
+  mar = c(0, 0, 2, 0),
+  col = colorRampPalette(c("blue", "white", "red"))(100),
+  diag = FALSE,
+  cl.ratio = 0.2,          # Width of color legend
+  cl.align.text = "l",     # Align color legend text
+  cl.cex = 0.8             # Color legend text size
+)
+```
+
+## Correlation matrix Plot | Lower Traingle
+```{r  fig.width= 8, fig.height=7}
+
+# Calculate R² matrix
+cor_matrix_r2 <- cor_matrix_original^2
+colnames(cor_matrix_r2) <- custom_labels
+rownames(cor_matrix_r2) <- custom_labels
+
+# Create a copy and set LOWER triangle to NA to only show UPPER half
+cor_matrix_r2_upper <- cor_matrix_r2
+cor_matrix_r2_upper[lower.tri(cor_matrix_r2_upper, diag = TRUE)] <- NA
+
+# Melt the matrix
+cor_melt <- melt(cor_matrix_r2_upper, na.rm = TRUE, varnames = c("Var1", "Var2"), value.name = "R2")
+
+# Set factor levels to maintain order
+cor_melt$Var1 <- factor(cor_melt$Var1, levels = custom_labels)
+cor_melt$Var2 <- factor(cor_melt$Var2, levels = rev(custom_labels))  # Reverse for proper orientation
+
+# Set font for Windows
+if (.Platform$OS.type == "windows") {
+  windowsFonts(Times = windowsFont("Times New Roman"))
+}
+
+# Create the plot with only UPPER half
+ggplot(cor_melt, aes(x = Var1, y = Var2, fill = R2)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = sprintf("%.2f", R2)), size = 4, fontface = "bold", family = "Times") +
+  scale_fill_gradient2(
+    low = "white", mid = "salmon", high = "red", midpoint = 0.5,
+    limits = c(0, 1), na.value = "white"
+  ) +
+  labs(fill = expression(R^2)) +
+  theme_minimal(base_size = 14) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, face = "bold", family = "Times"),
+    axis.text.y = element_text(face = "bold", family = "Times"),
+    legend.title = element_text(face = "bold", family = "Times"),
+    legend.text = element_text(family = "Times"),
+    plot.title = element_text(face = "bold", family = "Times"),
+    axis.title = element_blank(),
+    panel.grid = element_blank(),
+    axis.ticks = element_blank()
+  ) +
+  ggtitle("R² Correlation Matrix (Upper Triangle)") +
+  scale_x_discrete(limits = custom_labels) +
+  scale_y_discrete(limits = rev(custom_labels))
+```
+
+## Correlation network
+```{r fig.width= 6, fig.height=3, dpi= 300}
+library(igraph)
+library(ggraph)
+library(dplyr)
+
+var.selected <- c("Forest", "Agriculture", "Builtup", "Water")
+
+# Select LULC columns
+selected_data <- dplyr::select(data, dplyr::all_of(var.selected))
+
+# Compute correlation
+cor.tab <- cor(selected_data[sapply(selected_data, is.numeric)], use = "pairwise.complete.obs")
+
+# Convert correlation matrix to table and filter
+filtered_cor <- as.data.frame(as.table(cor.tab)) %>%
+  dplyr::rename(Var1 = Var1, Var2 = Var2, Correlation = Freq) %>%
+  dplyr::filter(abs(Correlation) >= 0.7, Var1 != Var2) %>%
+  dplyr::arrange(desc(Correlation))
+
+# Create edges
+cor_edges <- dplyr::select(filtered_cor, Var1, Var2, Correlation)
+
+# Graph object
+cor_graph <- graph_from_data_frame(cor_edges, directed = FALSE)
+
+# Add labels as node attribute
+V(cor_graph)$label <- custom_labels[V(cor_graph)$name]
+
+# Plot
+ggraph(cor_graph, layout = "kk") +
+  geom_edge_link(aes(edge_alpha = abs(Correlation), edge_width = abs(Correlation), edge_color = Correlation)) +
+  scale_edge_color_gradient2(low = "salmon3", mid = "white", high = "gold3", midpoint = 0, name = "Correlation") +
+  scale_edge_width_continuous(name = "Correlation") +
+  scale_edge_alpha_continuous(name = "Correlation") +
+  geom_node_point(size = 2, color = "black") +
+  geom_node_text(aes(label = label), repel = TRUE, size = 3) +
+  theme_void() +
+  theme(legend.position = "right", 
+        legend.box = "vertical", 
+        plot.margin = ggplot2::margin(10, 10, 10, 10),
+        plot.title = element_text(hjust = 0.5, vjust = 4, size = 13, face = "bold"))
+
+```
+
+## Hierarchiacal clustering of variables based on correlation
+
+```{r}
+library(ggdendro)
+library(dendextend)
+
+# Compute correlation matrix and convert to distance matrix
+cor_matrix <- cor(data[, env.var], use = "complete.obs")
+dist_matrix <- as.dist(1 - cor_matrix)  # Use 1 - correlation directly for distance
+
+# Perform hierarchical clustering
+hclust_result <- hclust(dist_matrix, method = "ward.D2")
+
+# Convert the result to a dendrogram object
+dend <- as.dendrogram(hclust_result)
+
+# Replace labels with custom labels
+labels(dend) <- custom_labels[labels(dend)]
+
+# Highlight branches based on correlation threshold
+cor_threshold <- 0.6
+cor_pairs <- which(abs(cor_matrix) > cor_threshold, arr.ind = TRUE)
+
+highlight_branches <- function(dend, cor_pairs) {
+  for (i in 1:nrow(cor_pairs)) {
+    idx1 <- cor_pairs[i, 1]
+    idx2 <- cor_pairs[i, 2]
+    dend <- dendextend::set(dend, "branches_col", value = "red", k = 7)
+  }
+  return(dend)
+}
+
+# Apply highlighting
+dend <- highlight_branches(dend, cor_pairs)
+
+# Customize and plot the dendrogram
+dend <- dend %>%
+  color_branches(k = 7) %>%  # Color branches for 7 clusters
+  set("labels_cex", 0.8)     # Adjust label size
+
+par(mar = c(8, 3, 4, 4))  # Adjust margins for better label visibility
+
+# Adjust y-axis to display correlation
+plot(dend, 
+     main = "    Hierarchical Clustering of Variables", 
+     ylab = "1 - Correlation", 
+     ylim = c(0, 0.5))
+abline(h = 0.4, col = "gray", lty = 2, lwd = 2)
+
+# Add a secondary y-axis with correlation values
+axis(side = 4, at = seq(0, 1, by = 0.2), 
+     labels = round(1 - seq(0, 1, by = 0.2), 2))
+mtext("Correlation", side = 4, line = 3)
+
+```
+
+# Variance
+
+## Variance analysis
+```{r fig.width=7, fig.height=3}
+library(corrr)
+library(tidymodels)
+
+library(showtext)
+showtext_auto()
+font_add("Times", "C:/Windows/Fonts/times.ttf")  # adjust if needed
+
+# PCA preparation recipe
+pca_prep_recipe <- recipe( ~ ., data = data[, env.var]) %>%
+  step_nzv(all_numeric_predictors()) %>%
+  prep()
+
+# Apply the recipe to create the PCA-ready data1set
+pca_ready_df <- bake(pca_prep_recipe, new_data = NULL)
+
+# Compute variance and arrange
+na_filter <- pca_ready_df %>% 
+  summarize(across(everything(), ~ var(scale(., center = FALSE), na.rm = TRUE))) %>% 
+  pivot_longer(cols = everything(), names_to = "feature", values_to = "variance") %>%  
+  arrange(desc(variance)) %>%
+  mutate(variance = round(variance, 2))  # Round variance here
+
+# Add readable labels from custom_labels
+na_filter <- na_filter %>%
+  mutate(label = custom_labels[feature])
+
+# Plot with new labels
+p <- ggplot(na_filter, aes(x = reorder(label, -variance), y = variance)) +
+  geom_point(shape = 16, color = "black", size = 2) +  # fixed (no stat="identity")
+  labs(
+    x = "Parameter",
+    y = "Variance"
+  ) +
+  theme_bw(base_family = "Times") +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text = element_text(size = 8),
+    axis.title = element_text(size = 10),
+    panel.grid = element_blank(),
+  )
+p
+# View variance table with readable labels
+print(na_filter)
+
+# Print labels for use elsewhere
+cat(paste0('"', na_filter$label, '"', sep = " ,"))
+
+ggsave(
+  filename = file.path("E:/1. Postgraduate (MPhill)/01. Thesis/3. Publications/1. GFP/2. Manuscipts/Other figures", "FIG02.pdf"),
+  plot = p,
+  device = cairo_pdf
+)
+
+
+```
+
+# Clustering
+
+## Basic Dendogram
+```{r}
+# Obtain Distance matrix
+env.dist <- dist(scale(data), method = "euclidean")
+
+# get clusters based on distance
+env.clust <- hclust(env.dist, method = "ward.D2")
+
+# limit number of clusters for L bow plot
+max_clusters <- 15
+wss <- numeric(max_clusters)
+
+# Looping data for L bow plot
+for (k in 1:max_clusters) {
+  cluster_assignments <- cutree(env.clust, k)
+  wss[k] <- sum(sapply(unique(cluster_assignments), function(clust) {
+    sum(dist(scale(data.PCA)[cluster_assignments == clust, ])^2)
+  }))
+}
+
+# Plotting L Bow plot
+plot(1:max_clusters, wss, type = "b", pch = 19,
+     xlab = "Number of Clusters",
+     ylab = "Within-Cluster Sum of Squares (WSS)",
+     main = "Elbow Method for Optimal Clusters")
+
+# Plotting the dendogram
+plot(env.clust, labels = F, xlab = " ")
+
+# mark clusters based on L Bow plot
+rect.hclust(env.clust, k = 4, border = c("#ff7f0e","black", 
+                                         "purple","green4","pink2", "gold3"))
+```
+
+## MDS clustered by dendogram
+```{r}
+
+# Cut tree at any point
+env.cl2 <- cutree(env.clust,2)
+env.cl3 <- cutree(env.clust,3)
+env.cl4 <- cutree(env.clust,4)
+env.cl5 <- cutree(env.clust,5)
+env.cl6 <- cutree(env.clust,6)
+
+env.mds <- cmdscale(env.dist)
+
+env.mds <- as.data.frame(env.mds)
+
+# Plot MDS
+plot(env.mds[,1], env.mds[,2], type = "n", xlab = "MDS1", ylab = "MDS2")
+points(env.mds, pch = 21, bg = c("#ff7f0e","black", 
+                                 "purple","green4","pink2","gold3")[env.cl5], cex = 1.5)
+```
+
+
+# Boxplot with Response parameter
+```{r}
+ggplot(data, aes(x = Code, y = GFP_stocking, fill = Code)) +
+  geom_boxplot(alpha = 0.7) +
+  labs(title = "GFP stocking across reservoirs",
+       x = "Cluster", y = "GFP stocking") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+
+# PCA
+
+## Basic PCA
+```{r}
+pca_1 <- princomp(scale(data[,2:ncol(data)]))
+
+# Access % of variance explained 
+pv <- (pca_1$sdev^2 / sum(pca_1$sdev^2))*100   
+
+# PCA Biplot visualisation 
+biplot(pca_1, xlabs = data$Mycode, col = c("gold2","blue"),
+       xlab= paste0("PC I (",round(pv[1],1),"% )"), xlim = c(-0.2,0.2),
+       ylim = c(-0.2,0.14), cex = 0.8,
+       ylab= paste0("PC II (",round(pv[2],1),"% )"))+
+  abline(h = 0, v = 0, col = "gray30", lty = 8)
+
+```
+
+## PCA using RDA
+```{r}
+library(vegan)
+library(ggplot2)
+
+# Generate PCA plots using Vegan package ------------------
+env.pca <- rda(scale(data))
+data<- data %>%
+  ungroup() %>%                        
+  mutate(clas2 = env.cl2,
+         clas3 = env.cl3,
+         clas4 = env.cl4,
+         clas5 = env.cl5,
+         clas6 = env.cl6,
+         PC_I = env.pca$CA$u[,1],
+         PC_II = env.pca$CA$u[,2],
+         PC_III = env.pca$CA$u[,3],
+         PC_IV = env.pca$CA$u[,4],
+         PC_V = env.pca$CA$u[,5]) %>%   
+  group_by(Cycle, Mycode, Code, District, FullDate, Name, Season, 
+           Inlet_control, Monsoon, Lithology, Basin)
+
+#saveRDS(data.sup, "Data/2.Data_all.rds")
+
+################ analysis -------------------------
+x <- 1
+y <- 2
+
+# Obtain percentage variance explained automatically using pca table
+var.exp <- round(env.pca$CA$eig / sum(env.pca$CA$eig) * 100,1)
+names(var.exp) <- as.character(as.roman(1:length(var.exp)))
+
+# Obtain percentage variance explained automatically using pca table
+xlabel <- function(x) {paste0("PC ", names(var.exp[x]), " (", var.exp[x], "%)")}
+ylabel <- function(y) {paste0("PC ", names(var.exp[y]), " (", var.exp[y], "%)")}
+
+# Create data frames from the relevant parts of env.pca
+df_u <- as.data.frame(env.pca$CA$u)
+df_v <- as.data.frame(env.pca$CA$v)
+
+# Ensure the data frames have appropriate column names for ggplot
+colnames(df_u) <- paste0("PC", 1:ncol(df_u))
+colnames(df_v) <- paste0("PC", 1:ncol(df_v))
+
+
+# Plotting with ggplot
+ggplot() +
+  geom_point(data = df_u, aes(x = PC1, y = PC2), color = "black", size = 2) +
+  #stat_ellipse(data = df_u, aes(x = PC1, y = PC2, color = as.factor(data.sup$Monsoon)), type = "t", level = 0.95, linewidth = 1) +
+  geom_text_repel(data = df_v, aes(x = 1.1*PC1, y = 1.1*PC2, label = rownames(df_v)), size = 3.5, color = "blue3", fontface = "bold", box.padding = 0.3, point.padding = 0.3) +
+  geom_segment(data = df_v, aes(x = 0, y = 0, xend = 1.1*PC1, yend = 1.1*PC2), arrow = arrow(length = unit(0.2, "cm")), color = "lightblue4") +
+  geom_vline(xintercept = 0, color = "grey70", linetype = 2) +
+  geom_hline(yintercept = 0, color = "grey70", linetype = 2) +
+  scale_x_continuous(sec.axis = dup_axis(labels = NULL, name = NULL)) +
+  scale_y_continuous(sec.axis = dup_axis(labels = NULL, name = NULL)) +
+  xlab(xlabel(1)) +
+  ylab(ylabel(2)) +
+  labs(fill = "Total Production (kg/ha)") +
+  scale_color_manual(values = c("#2CCACE", "#C77CFF","#F8766D","#83B20D")) +
+  labs(color = "Monsoon Period") +
+  theme(
+    axis.ticks.x = element_blank(),
+    axis.ticks.y = element_blank(),
+    panel.background = element_blank(),
+    panel.border = element_blank(),
+    panel.grid = element_blank(),
+    axis.line = element_line(color = "gray25"),
+    text = element_text(size = 12),
+    axis.text = element_text(size = 10, colour = "gray25"),
+    axis.title = element_text(size = 14, colour = "gray25"),
+    legend.title = element_text(size = 12),
+    legend.key = element_blank(),
+    legend.position = "right",
+    legend.text = element_text(size = 12, color = "black")
+  )
+```
+
+## PCA with Ordiplot
+```{r}
+# Convert data to data frame and set row names
+data.PCA <- as.data.frame(data.PCA)
+rownames(data.PCA) <- data$Mycode
+
+# Perform PCA
+pca.test <- rda(scale(data.PCA))
+
+# Extract plot data
+plot1 <- ordiplot(pca.test, choices = c(1, 2))
+sites.long1 <- sites.long(plot1, env.data = data.PCA)
+species.long1 <- species.long(plot1)
+axis.long2 <- axis.long(pca.test, choices = c(1, 2))
+
+# Generate ordisurf data
+A1.surface <- ordisurf(plot1, y = data$Total_Hrvst, nlevels = 9)
+A1.grid <- ordisurfgrid.long(A1.surface)
+
+# Filter finite values for contour
+finite_z <- A1.grid %>% filter(is.finite(z))
+max_z <- max(finite_z$z)
+contour_breaks <- seq(0, max_z + 50, by = 50)  # Adjust intervals as needed
+A1.grid <- A1.grid %>% filter(is.finite(z))
+
+# Ensure Monsoon is a factor
+#data.sup$Monsoon <- as.factor(data.sup$Monsoon)
+data.sup$Monsoon <- factor(data.sup$Monsoon, levels = c("Northeast", "1st_Inter_Monsoon", "Southwest","2nd_Inter_Monsoon"))
+
+####### PCA plot with Production surface  -----------
+ggplot() +
+  geom_contour_filled(data = A1.grid, aes(x = x,y = y,z = z),
+                      breaks = seq(0, max_z + 50, by = 50)) +
+  scale_fill_brewer(palette = "Blues") +
+  stat_ellipse(data = sites.long1, 
+               aes(x = as.numeric(axis1), y = as.numeric(axis2), 
+                   color = as.factor(data.sup$Monsoon)), 
+               type = "t", level = 0.95, linewidth = 1) +
+  # geom_text_repel(data = species.long1, 
+  #                 aes(x = 1.1*as.numeric(axis1), y = 1.1*as.numeric(axis2), 
+  #                     label = labels), 
+  #                 size = 3.5, color = "red3", fontface = "bold", 
+  #                 box.padding = 0.3, point.padding = 0.3) +
+  geom_vline(xintercept = 0, color = "grey70", linetype = 2) +
+  geom_hline(yintercept = 0, color = "grey70", linetype = 2) +
+  scale_x_continuous(sec.axis = dup_axis(labels = NULL, name = NULL)) +
+  scale_y_continuous(sec.axis = dup_axis(labels = NULL, name = NULL)) +
+  xlab(axis.long2[1, "label"]) +
+  ylab(axis.long2[2, "label"]) +  
+  labs(fill = "Total Production (kg/ha)") +
+  scale_color_manual(values = c("#2c51c9", "#C78CFF","#fa9750","#6b8f10")) +
+  labs(color = "Monsoon Period", fill = "Total Production (kg/ha)") +
+  theme(
+    axis.ticks.x = element_blank(),
+    axis.ticks.y = element_blank(),
+    panel.background = element_blank(),
+    panel.border = element_blank(),
+    panel.grid = element_blank(),
+    axis.line = element_line(color = "gray25"),
+    text = element_text(size = 12),
+    axis.text = element_text(size = 10, colour = "gray25"),
+    axis.title = element_text(size = 14, colour = "gray25"),
+    legend.title = element_text(size = 12),
+    legend.key = element_blank(),
+    legend.position = "right",
+    legend.text = element_text(size = 12, color = "black")
+  )
+
+```
+
+# Cluster statistics
+
+## permutational dispersions
+```{r}
+
+
+group <- as.factor(data$hclust_cluster)
+
+library(vegan)
+
+# Standardize environmental data
+env.dist <- vegdist(scale(data.pca), method = "euclidean")  # or "bray" if appropriate
+
+# Run PERMANOVA
+permanova_result <- adonis2(env.dist ~ group, permutations = 999)
+print(permanova_result)
+
+
+# Test dispersion
+dispersion <- betadisper(env.dist, group)
+
+# ANOVA on the dispersions
+permdisp_result <- anova(dispersion)
+print(permdisp_result)
+
+# Optional: pairwise tests
+permdisp_pairwise <- permutest(dispersion, permutations = 999)
+print(permdisp_pairwise)
+
+# Optional: visualize
+plot(dispersion)
+
+
+```
+
+## ANOSIM
+```{r}
+library(vegan)
+
+# Prepare the distance matrix (use scaled data)
+env.dist <- vegdist(scale(data.pca), method = "euclidean")  # or method = "bray"
+
+# Ensure grouping factor
+group <- as.factor(data$kmeans5)
+
+# Run ANOSIM
+anosim_result <- anosim(env.dist, group, permutations = 999)
+print(anosim_result)
+
+# Optional plot
+plot(anosim_result)
+
+```
+
+## SIMPER
+```{r}
+library(vegan)
+
+# Environmental data (already scaled is best)
+env.scaled <- scale(data.pca)  # assuming data.pca = data.mean[, var.env]
+
+# Grouping factor
+group <- as.factor(data$kmeans5)
+
+# Run SIMPER
+simper_result <- simper(env.scaled, group)
+
+# View summary
+summary(simper_result)
+
+# Example: get top contributors between groups 1 and 2
+simper_result[[1]]  # or simper_result[["1_2"]] depending on how it's named
+
+```
+
+# GAM
+
+## basic GAM
+```{r}
+gam1 <- gam(EC ~ s(Agri.std), data = data,, method = "REML")
+
+summary(gam1)
+
+plot(gam1)
+
+gam.check(gam1)
+
+```
+
+## GAM plot ggplot
+```{r}
+ggplot(data, aes(x = Agri.std, y = EC, color = Phase, fill = Phase)) +
+    geom_point(size = 1.2, alpha = 0.3) +
+    geom_smooth(
+      method = "gam",
+      method.args = list(method = "REML"),
+      formula = y ~ s(x),
+      se = TRUE,
+      linewidth = 1.2, 
+      alpha = 0.09
+    ) +
+    scale_color_manual(values = phase_colors) +
+    scale_fill_manual(values = phase_colors) +
+    labs(x = "Agri.std", y = custom_labels0[variable]) +
+    theme_classic(base_family = "Times New Roman") +
+    theme(
+      axis.text = element_text(size = 12, face = "bold"),
+      axis.title = element_text(size = 14, face = "bold"),
+      legend.title = element_text(size = 12, face = "bold"),
+      legend.text = element_text(size = 11)
+    )
+  
+```
+
+## Check GAM variation for all parameters individually
+
+```{r}
+library(mgcv)
+library(tibble)
+library(ggplot2)
+library(gratia)
+
+# "Catchment.area", "Surf.area" excluded beacause I already use the suraface area to standardize the catch and catchment area also highly correlates with it.
+
+env.var <- c("Temperature", "DO", "log(EC)", "Water_pH", "Water_ORP", "log(Chl_a)", "SDD", "P_Alk", "T_Alk", "Water_TP", "Water_TN", "Sed_TP", "log(Sed_TN)", 
+             "Sed_Col_L", "Sed_Col_a",  "Sed_OM", "Sed_pH", "Sed_ORP", 
+             "Max.depth", "Tank.Elevation")
+
+summary_table <- tibble(
+  Variable = character(),
+  edf = numeric(),
+  Ref_df = numeric(),
+  F_value = numeric(),
+  p_value = numeric(),
+  R_squared = numeric(),
+  AIC = numeric()
+)
+
+model_results <- list()
+
+for (X in env.var) {
+  formula_text <- paste("log(GFP_Hrvst + 0.1) ~ s(", X ,", k = 15)", sep = "")
+  this_formula <- as.formula(formula_text)
+  
+  # Try-catch to handle any modeling issues
+  try({
+    gam_model <- gam(this_formula, data = data, method = "REML")
+    model_results[[X]] <- gam_model
+    
+    s <- summary(gam_model)
+    
+    if (!is.null(s$s.table)) {
+      edf <- round(s$s.table[1, "edf"],2)
+      ref.df <- round(s$s.table[1, "Ref.df"],2)
+      f_val <- round(s$s.table[1, "F"],3)
+      p_val <- round(s$s.table[1, "p-value"], 3)
+    } else {
+      edf <- ref.df <- f_val <- p_val <- NA
+    }
+    
+    r2 <- round(s$r.sq, 3)
+    model_aic <- AIC(gam_model)
+    
+    summary_table <- add_row(summary_table,
+                             Variable = X,
+                             edf = edf,
+                             Ref_df = ref.df,
+                             F_value = f_val,
+                             p_value = p_val,
+                             R_squared = r2,
+                             AIC = model_aic)
+  }, silent = TRUE)
+}
+
+View(summary_table)
+
+#write.xlsx(summary_table, "gam_summary_table.xlsx", row.names = FALSE)
+
+```
+
+## Univariate GAM loop
+```{r}
+env.var <- c("Temperature", "DO", "log(EC)", "Water_pH", "Water_ORP", "log(Chl_a)", "SDD", "P_Alk", "log(T_Alk)", "log(Water_TP)", "Water_TN", "Sed_TP", "log(Sed_TN)", "Sed_Col_L", "Sed_Col_a", "Sed_OM", "Sed_pH", "Sed_ORP", "log(Max.depth)", "Tank.Elevation", "log(Surf.area)", "GFP_stocking")
+
+custom_labels1 <- c(
+  Temperature = "Temperature",
+  DO = "DO",
+  `log(EC)` = "log(EC)",
+  TDS = "TDS",
+  Water_pH = "Water-pH",
+  Water_ORP = "Water-ORP",
+  `log(Chl_a)` = "log(Chl-a)",
+  SDD = "SDD",
+  P_Alk = "P-Alk",
+  `log(T_Alk)` = "log(T-Alk)",
+  Hardness = "Hardness",
+  `log(Water_TP)` = "log(Water-TP)",
+  Water_TN = "Water-TN",
+  Sed_TP = "Sed-TP",
+  `log(Sed_TN)` = "log(Sed_TN)",
+  Sed_Col_L = "Sed-Col-L",
+  Sed_Col_a = "Sed-Col-a",
+  Sed_Col_b = "Sed-Col-b",
+  Sed_OM = "Sed-OM",
+  Sed_pH = "Sed-pH",
+  Sed_ORP = "Sed-ORP",
+  Surf.area = "Surf area",
+  Perimeter = "Perimeter",
+  `log(Max.depth)` = "log(max-depth)",
+  Catchment.area = "Catchment area",
+  Tank.Elevation = "Altitude",
+  Atm.pressure = "Atm-pressure",
+  GFP_stocking = "GFP-stocking",
+  `log(Surf.area)` = "log(Surf.area)"
+)
+
+for (para in env.var) {
+  formula <- as.formula(paste("log(GFP_Hrvst + 0.1) ~ s(", para, ")", sep = ""))
+  gam1 <- mgcv::gam(formula, data = data, method = "REML", select = TRUE)
+  
+  print(paste("Results for", para))
+  print(summary(gam1))
+  #gam.check(gam1)
+  
+  plot(gam1, shade = TRUE, shade.col = "lightblue", rug = TRUE, 
+       residuals = TRUE, cex = 2, 
+       xlab = custom_labels1[para], 
+       ylab = paste("s(", custom_labels1[para], ")", sep = ""))
+}
+
+```
+
+# Random Forest
+
+```{r  fig.width= 5, fig.height=3.6}
+library(randomForest)
+library(rpart)
+library(dplyr)
+set.seed(22)
+
+env.var <- c("Temperature", "DO", "EC", "TDS", "Water_pH", "Water_ORP", "Chl_a", "SDD", "TSS", "P_Alk", "T_Alk", "Hardness", "Water_TP", "Water_TN", "Sed_TP", "Sed_TN", "Sed_Col_L", "Sed_Col_a", "Sed_Col_b", "Sed_OM", "Sed_pH", "Sed_ORP")
+
+# Create a temporary copy and rename GFP_Hrvst to GFP_catch
+temp_data <- data %>%
+  ungroup() %>%
+  select(LULC_pca1, all_of(env.var))
+# Remove missing values
+temp_data <- na.omit(temp_data)
+
+# Run Random Forest model
+rfmodel <- randomForest(LULC_pca1 ~ ., data = temp_data, importance = TRUE, ntree = 1001, mtry = 5)
+
+# Extract importance matrix
+importance_matrix <- randomForest::importance(rfmodel)
+
+# Get top 10 by %IncMSE and IncNodePurity
+top_10_mse <- tail(importance_matrix[order(importance_matrix[ , "%IncMSE"]), ], 10)
+top_10_purity <- tail(importance_matrix[order(importance_matrix[ , "IncNodePurity"]), ], 10)
+
+varImpPlot(rfmodel, main = "Water quality and seidment quality")
+
+dotchart(top_10_mse[ , "%IncMSE"],
+         labels = custom_labels0[rownames(top_10_mse)],
+         xlab = "% Increase in MSE",
+         main = "LULC_pca1",
+         cex = 0.8)
+
+# Print model summary
+print(rfmodel)
+
+```
+
+# Linear regression
+
+```{r}
+data2 <- subset(data, Phase == "During")
+
+gam1 <- lm(T_Alk ~ Agri.std, data = data)
+
+summary(gam1)
+
+car::avPlots(gam1)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
